@@ -1,0 +1,21 @@
+{
+  "name": "com.dnsoft.claudecode",
+  "version": "0.1.0",
+  "displayName": "Claude Code",
+  "description": "Unity editor extension that integrates Claude Code CLI as an AI assistant. Features chat UI with streaming, markdown rendering, image paste, file/folder attachments, OAuth & API key auth, MCP-based permission system, history sidebar, and model selection.",
+  "unity": "2022.3",
+  "author": {
+    "name": "dnsoft",
+    "email": "syj1356@dnsoft.co.kr"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "assistant",
+    "editor",
+    "mcp",
+    "chat",
+    "llm"
+  ],
+  "type": "tool"
+}
