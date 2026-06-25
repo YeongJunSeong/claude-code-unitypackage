@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
-using UnityEditor.PackageManager;
 using UnityEngine;
+using UpmPackageInfo = UnityEditor.PackageManager.PackageInfo;
+using PackageSource = UnityEditor.PackageManager.PackageSource;
 
 namespace ClaudeCode.Editor.Approval
 {
@@ -38,7 +39,7 @@ namespace ClaudeCode.Editor.Approval
 
             try
             {
-                var info = PackageInfo.FindForAssembly(typeof(PackageSelfGuard).Assembly);
+                var info = UpmPackageInfo.FindForAssembly(typeof(PackageSelfGuard).Assembly);
                 if (info == null || info.name != PackageName)
                 {
                     // Could not resolve our own package info — be safe and do NOT block,
