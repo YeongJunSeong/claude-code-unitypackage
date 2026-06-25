@@ -34,6 +34,12 @@ namespace ClaudeCode.Editor.MCP.Tools
             var inputDict = rawInput as Dictionary<string, object> ?? new Dictionary<string, object>();
             var inputJsonForUi = McpJsonSerializer.Serialize(inputDict);
 
+            // 패키지 자기수정 차단: UPM(immutable)으로 설치된 경우, 패키지 자신의
+            // 파일을 수정하려는 시도는 다른 모든 규칙보다 우선해서 무조건 거부.
+            if (PackageSelfGuard.ShouldBlock(toolName, inputDict, out var blockedPath))
+                return BuildDenyResponse(
+                    $"Claude Code 패키지 자체 파일은 수정할 수 없습니다 (읽기 전용 UPM 설치): {blockedPath}");
+
             var mode = PermissionModeManager.Current;
 
             // AcceptEdits 모드: 편집 도구는 자동 승인

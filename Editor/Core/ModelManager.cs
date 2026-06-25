@@ -20,6 +20,7 @@ namespace ClaudeCode.Editor.Core
             new ModelOption { DisplayName = "Opus",           CliValue = "opus" },
             new ModelOption { DisplayName = "Sonnet",         CliValue = "sonnet" },
             new ModelOption { DisplayName = "Haiku",          CliValue = "haiku" },
+            new ModelOption { DisplayName = "Opus 4.8",       CliValue = "claude-opus-4-8" },
             new ModelOption { DisplayName = "Opus 4.7",       CliValue = "claude-opus-4-7" },
             new ModelOption { DisplayName = "Opus 4.6",       CliValue = "claude-opus-4-6" },
             new ModelOption { DisplayName = "Sonnet 4.6",     CliValue = "claude-sonnet-4-6" },
