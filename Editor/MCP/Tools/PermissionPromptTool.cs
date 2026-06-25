@@ -35,10 +35,13 @@ namespace ClaudeCode.Editor.MCP.Tools
             var inputJsonForUi = McpJsonSerializer.Serialize(inputDict);
 
             // 패키지 자기수정 차단: UPM(immutable)으로 설치된 경우, 패키지 자신의
-            // 파일을 수정하려는 시도는 다른 모든 규칙보다 우선해서 무조건 거부.
+            // 파일을 수정/복사/이동/삭제하려는 시도는 다른 모든 규칙보다 우선해서 무조건 거부.
             if (PackageSelfGuard.ShouldBlock(toolName, inputDict, out var blockedPath))
                 return BuildDenyResponse(
-                    $"Claude Code 패키지 자체 파일은 수정할 수 없습니다 (읽기 전용 UPM 설치): {blockedPath}");
+                    "Claude Code 패키지(com.dnsoft.claudecode)는 읽기 전용 UPM 패키지로 설치되어 " +
+                    "있어 수정/복사/이동/삭제할 수 없습니다. 패키지를 프로젝트로 복사해서 우회하려는 " +
+                    "시도도 허용되지 않습니다. 패키지 코드 변경이 필요하면 사용자에게 알리고 중단하세요. " +
+                    $"차단된 작업: {blockedPath}");
 
             var mode = PermissionModeManager.Current;
 

@@ -67,7 +67,20 @@ namespace ClaudeCode.Editor.Core
         public ProcessStartInfo ApplyAuth(ProcessStartInfo startInfo)
         {
             if (Method == AuthMethod.ApiKey && !string.IsNullOrEmpty(ApiKey))
+            {
                 startInfo.EnvironmentVariables["ANTHROPIC_API_KEY"] = ApiKey;
+            }
+            else
+            {
+                // CliLogin(OAuth) 모드: 자식 CLI 프로세스가 부모(Unity)의 환경변수를
+                // 상속하므로, PC에 설정된 (잘못됐거나 오래된) ANTHROPIC_API_KEY가
+                // OAuth 인증을 덮어써서 401을 유발할 수 있다. OAuth를 쓰도록 명시적으로 제거.
+                if (startInfo.EnvironmentVariables.ContainsKey("ANTHROPIC_API_KEY"))
+                    startInfo.EnvironmentVariables.Remove("ANTHROPIC_API_KEY");
+                // 일부 환경에서 쓰는 변형 키들도 함께 정리.
+                if (startInfo.EnvironmentVariables.ContainsKey("ANTHROPIC_AUTH_TOKEN"))
+                    startInfo.EnvironmentVariables.Remove("ANTHROPIC_AUTH_TOKEN");
+            }
             return startInfo;
         }
 

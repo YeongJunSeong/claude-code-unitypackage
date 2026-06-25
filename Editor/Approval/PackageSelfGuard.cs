@@ -90,20 +90,60 @@ namespace ClaudeCode.Editor.Approval
             Resolve();
 
             if (!_isImmutable || string.IsNullOrEmpty(_packageRootNormalized)) return false;
-            if (!IsFileWritingTool(toolName)) return false;
             if (input == null) return false;
 
-            foreach (var path in ExtractTargetPaths(toolName, input))
+            // 1) 파일 편집 도구: 대상 경로가 패키지 내부면 차단.
+            if (IsFileWritingTool(toolName))
             {
-                var norm = Normalize(path);
-                if (string.IsNullOrEmpty(norm)) continue;
-                if (IsInside(norm, _packageRootNormalized))
+                foreach (var path in ExtractTargetPaths(toolName, input))
                 {
-                    blockedPath = path;
-                    return true;
+                    var norm = Normalize(path);
+                    if (string.IsNullOrEmpty(norm)) continue;
+                    if (IsInside(norm, _packageRootNormalized))
+                    {
+                        blockedPath = path;
+                        return true;
+                    }
                 }
+                return false;
             }
+
+            // 2) Bash/셸 도구: 명령 문자열이 패키지 경로나 패키지 ID를 참조하면 차단.
+            //    (cp/mv/rm/리다이렉트/sed -i 등으로 패키지를 복사·이동·삭제해서
+            //     파일 편집 가드를 우회하려는 시도를 막는다.)
+            if (IsShellTool(toolName))
+            {
+                if (input.TryGetValue("command", out var cmdObj) && cmdObj != null)
+                {
+                    var raw = cmdObj.ToString();
+                    var normCmd = raw.Replace('\\', '/');
+                    if (Application.platform == RuntimePlatform.WindowsEditor)
+                        normCmd = normCmd.ToLowerInvariant();
+
+                    if (normCmd.Contains(PackageName) ||
+                        normCmd.Contains(_packageRootNormalized))
+                    {
+                        blockedPath = "(shell) " + raw;
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             return false;
+        }
+
+        static bool IsShellTool(string toolName)
+        {
+            if (string.IsNullOrEmpty(toolName)) return false;
+            switch (toolName)
+            {
+                case "Bash":
+                case "Shell":
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         static IEnumerable<string> ExtractTargetPaths(string toolName, Dictionary<string, object> input)
