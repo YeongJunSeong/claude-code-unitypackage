@@ -23,12 +23,78 @@ namespace ClaudeCode.Editor.UI
                 return;
 
             var blocks = SplitIntoBlocks(markdown);
+
+            // 연속된 텍스트 블록(단락/제목/리스트)은 하나의 선택 가능한 Label로 합쳐서
+            // 블록 경계에서 드래그 선택이 끊기지 않게 한다. 코드 블록만 별도 박스로 분리.
+            var proseRun = new List<Block>();
             foreach (var block in blocks)
             {
-                var element = RenderBlock(block);
-                if (element != null)
-                    container.Add(element);
+                if (block.Type == "code")
+                {
+                    FlushProseRun(proseRun, container);
+                    var codeEl = RenderCodeBlock(block);
+                    if (codeEl != null) container.Add(codeEl);
+                }
+                else
+                {
+                    proseRun.Add(block);
+                }
             }
+            FlushProseRun(proseRun, container);
+        }
+
+        static void FlushProseRun(List<Block> run, VisualElement container)
+        {
+            if (run.Count == 0) return;
+            var label = RenderProseRun(run);
+            if (label != null) container.Add(label);
+            run.Clear();
+        }
+
+        static VisualElement RenderProseRun(List<Block> blocks)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                var b = blocks[i];
+                if (i > 0)
+                    sb.Append(Separator(blocks[i - 1].Type, b.Type));
+
+                switch (b.Type)
+                {
+                    case "heading":
+                        int.TryParse(b.Language, out int level);
+                        int size = level switch { 1 => 17, 2 => 15, 3 => 14, _ => 13 };
+                        sb.Append($"<size={size}><b><color=#FFFFFF>{ApplyInlineFormatting(b.Content)}</color></b></size>");
+                        break;
+                    case "list":
+                        sb.Append("<color=#B3B3B3>•</color> ");
+                        sb.Append(ApplyInlineFormatting(b.Content));
+                        break;
+                    default: // paragraph
+                        sb.Append(ApplyInlineFormatting(b.Content));
+                        break;
+                }
+            }
+
+            var label = new Label(sb.ToString());
+            label.enableRichText = true;
+            label.style.fontSize = 13;
+            label.style.color = new Color(0.9f, 0.9f, 0.9f);
+            label.style.whiteSpace = WhiteSpace.Normal;
+            label.style.marginTop = 2;
+            label.style.marginBottom = 2;
+            label.selection.isSelectable = true;
+            return label;
+        }
+
+        // 블록 간 줄간격: 리스트끼리는 한 줄, 그 외 단락/제목 전환은 빈 줄 하나.
+        static string Separator(string prevType, string curType)
+        {
+            if (curType == "heading") return "\n\n";
+            if (prevType == "heading") return "\n";
+            if (prevType == "list" || curType == "list") return "\n";
+            return "\n\n";
         }
 
         struct Block
@@ -124,18 +190,6 @@ namespace ClaudeCode.Editor.UI
             sb.Clear();
         }
 
-        static VisualElement RenderBlock(Block block)
-        {
-            switch (block.Type)
-            {
-                case "code": return RenderCodeBlock(block);
-                case "heading": return RenderHeading(block);
-                case "list": return RenderListItem(block);
-                case "paragraph": return RenderParagraph(block);
-                default: return null;
-            }
-        }
-
         static VisualElement RenderCodeBlock(Block block)
         {
             var wrap = new VisualElement();
@@ -215,68 +269,6 @@ namespace ClaudeCode.Editor.UI
             wrap.Add(code);
 
             return wrap;
-        }
-
-        static VisualElement RenderHeading(Block block)
-        {
-            int.TryParse(block.Language, out int level);
-            int size = level switch
-            {
-                1 => 17,
-                2 => 15,
-                3 => 14,
-                _ => 13
-            };
-
-            var label = new Label(ApplyInlineFormatting(block.Content));
-            label.style.fontSize = size;
-            label.style.unityFontStyleAndWeight = FontStyle.Bold;
-            label.style.color = Color.white;
-            label.style.marginTop = 6;
-            label.style.marginBottom = 4;
-            label.style.whiteSpace = WhiteSpace.Normal;
-            label.enableRichText = true;
-            label.selection.isSelectable = true;
-            return label;
-        }
-
-        static VisualElement RenderListItem(Block block)
-        {
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.marginTop = 1;
-            row.style.marginBottom = 1;
-            row.style.paddingLeft = 4;
-
-            var bullet = new Label("• ");
-            bullet.style.fontSize = 13;
-            bullet.style.color = new Color(0.7f, 0.7f, 0.7f);
-            bullet.style.marginRight = 4;
-            row.Add(bullet);
-
-            var content = new Label(ApplyInlineFormatting(block.Content));
-            content.style.fontSize = 13;
-            content.style.color = new Color(0.9f, 0.9f, 0.9f);
-            content.style.flexGrow = 1;
-            content.style.whiteSpace = WhiteSpace.Normal;
-            content.enableRichText = true;
-            content.selection.isSelectable = true;
-            row.Add(content);
-
-            return row;
-        }
-
-        static VisualElement RenderParagraph(Block block)
-        {
-            var label = new Label(ApplyInlineFormatting(block.Content));
-            label.style.fontSize = 13;
-            label.style.color = new Color(0.9f, 0.9f, 0.9f);
-            label.style.whiteSpace = WhiteSpace.Normal;
-            label.style.marginTop = 2;
-            label.style.marginBottom = 2;
-            label.enableRichText = true;
-            label.selection.isSelectable = true;
-            return label;
         }
 
         static string ApplyInlineFormatting(string text)
