@@ -93,13 +93,12 @@ namespace ClaudeCode.Editor.Core
 
                 var psi = new ProcessStartInfo
                 {
-                    FileName = cliPath,
-                    Arguments = "auth status --json",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 };
+                CliLocator.ConfigureStartInfo(psi, cliPath, "auth status --json");
 
                 using var proc = Process.Start(psi);
                 if (proc == null) return null;
@@ -202,13 +201,12 @@ namespace ClaudeCode.Editor.Core
 
                 var psi = new ProcessStartInfo
                 {
-                    FileName = cliPath,
-                    Arguments = "auth logout",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 };
+                CliLocator.ConfigureStartInfo(psi, cliPath, "auth logout");
 
                 using var proc = Process.Start(psi);
                 proc?.WaitForExit(5000);

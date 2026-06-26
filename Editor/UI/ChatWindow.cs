@@ -591,8 +591,8 @@ namespace ClaudeCode.Editor.UI
         void ReloadMessageBubbles()
         {
             _messageContainer.Clear();
-            foreach (var msg in _session.Messages)
-                AddMessageBubble(msg.role, msg.content);
+            for (int i = 0; i < _session.Messages.Count; i++)
+                AddMessageBubble(_session.Messages[i].role, _session.Messages[i].content, i);
         }
 
         void BuildToolbar(VisualElement root)
@@ -1862,9 +1862,10 @@ namespace ClaudeCode.Editor.UI
             return bubble;
         }
 
-        void AddMessageBubble(string role, string content)
+        void AddMessageBubble(string role, string content, int messageIndex = -1)
         {
-            int messageIndex = _session != null ? _session.Messages.Count - 1 : -1;
+            if (messageIndex < 0)
+                messageIndex = _session != null ? _session.Messages.Count - 1 : -1;
 
             var wrapper = new VisualElement();
             wrapper.style.position = Position.Relative;
@@ -1906,7 +1907,7 @@ namespace ClaudeCode.Editor.UI
             if (role == "user")
                 AttachUserMessageContextMenu(wrapper, messageIndex, content);
             else if (role == "assistant")
-                AttachAssistantActions(wrapper, messageIndex);
+                AttachAssistantActions(wrapper, messageIndex, content);
 
             _messageContainer.Add(wrapper);
             ScrollToBottom();
@@ -1933,7 +1934,7 @@ namespace ClaudeCode.Editor.UI
             });
         }
 
-        void AttachAssistantActions(VisualElement wrapper, int messageIndex)
+        void AttachAssistantActions(VisualElement wrapper, int messageIndex, string content = null)
         {
             var actionRow = new VisualElement();
             actionRow.style.flexDirection = FlexDirection.Row;
@@ -1967,7 +1968,56 @@ namespace ClaudeCode.Editor.UI
 
             actionRow.Add(regenBtn);
 
+            // Per-message token/cost footer (right-aligned).
+            if (_session != null && messageIndex >= 0 && messageIndex < _session.Messages.Count)
+            {
+                var msg = _session.Messages[messageIndex];
+                // content match guards against display-only bubbles (e.g. profiler snapshot)
+                // picking up an unrelated message's usage.
+                if (msg != null && msg.hasUsage && (content == null || msg.content == content))
+                {
+                    var spacer = new VisualElement();
+                    spacer.style.flexGrow = 1;
+                    actionRow.Add(spacer);
+
+                    var usageLabel = new Label(FormatUsage(msg));
+                    usageLabel.style.fontSize = 10;
+                    usageLabel.style.color = new Color(0.55f, 0.55f, 0.6f);
+                    usageLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+                    usageLabel.selection.isSelectable = true;
+                    usageLabel.tooltip = BuildUsageTooltip(msg);
+                    actionRow.Add(usageLabel);
+                }
+            }
+
             wrapper.Add(actionRow);
+        }
+
+        static string FormatUsage(ChatMessage msg)
+        {
+            int totalIn = msg.inputTokens + msg.cacheCreationTokens + msg.cacheReadTokens;
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"in {FormatTokenCount(totalIn)} · out {FormatTokenCount(msg.outputTokens)}");
+            if (msg.costUsd > 0)
+                sb.Append($" · ${msg.costUsd:0.0000}");
+            return sb.ToString();
+        }
+
+        static string BuildUsageTooltip(ChatMessage msg)
+        {
+            return
+                $"Input: {msg.inputTokens:N0}\n" +
+                $"Cache write: {msg.cacheCreationTokens:N0}\n" +
+                $"Cache read: {msg.cacheReadTokens:N0}\n" +
+                $"Output: {msg.outputTokens:N0}" +
+                (msg.costUsd > 0 ? $"\nCost: ${msg.costUsd:0.000000}" : "");
+        }
+
+        static string FormatTokenCount(int n)
+        {
+            if (n >= 1_000_000) return (n / 1_000_000.0).ToString("0.#") + "M";
+            if (n >= 1_000) return (n / 1_000.0).ToString("0.#") + "k";
+            return n.ToString();
         }
 
         void OpenEditDialog(int messageIndex, string originalContent)
@@ -2116,8 +2166,8 @@ namespace ClaudeCode.Editor.UI
         void RestoreSession()
         {
             SessionSerializer.instance.RestoreState(_session);
-            foreach (var msg in _session.Messages)
-                AddMessageBubble(msg.role, msg.content);
+            for (int i = 0; i < _session.Messages.Count; i++)
+                AddMessageBubble(_session.Messages[i].role, _session.Messages[i].content, i);
         }
 
         void SaveSession()

@@ -14,6 +14,14 @@ namespace ClaudeCode.Editor.Core
         public string role;
         public string content;
         public string timestamp;
+
+        // Per-turn usage (assistant messages only). Populated on completion.
+        public bool hasUsage;
+        public int inputTokens;
+        public int cacheCreationTokens;
+        public int cacheReadTokens;
+        public int outputTokens;
+        public double costUsd;
     }
 
     public class SessionManager : IDisposable
@@ -38,6 +46,11 @@ namespace ClaudeCode.Editor.Core
         public UsageInfo LatestUsage { get; private set; }
         public int LatestContextWindow { get; private set; } = 200000;
         public double TotalCostUsd { get; private set; }
+
+        // Holds the usage/cost for the in-flight turn so it can be attached to the
+        // assistant ChatMessage when it finalizes.
+        UsageInfo _pendingTurnUsage;
+        double _pendingTurnCost;
 
         static readonly System.Text.RegularExpressions.Regex ContextWindowRegex
             = new System.Text.RegularExpressions.Regex(@"""contextWindow""\s*:\s*(\d+)",
@@ -202,6 +215,11 @@ namespace ClaudeCode.Editor.Core
                             if (cost > 0) TotalCostUsd += cost;
                             var cw = ExtractIntFromLine(line, ContextWindowRegex);
                             if (cw > 0) LatestContextWindow = cw;
+
+                            // Stash this turn's usage/cost for the assistant message footer.
+                            _pendingTurnUsage = LatestUsage;
+                            _pendingTurnCost = cost > 0 ? cost : 0;
+
                             OnUsageUpdated?.Invoke();
                         }
                     }
@@ -279,9 +297,20 @@ namespace ClaudeCode.Editor.Core
                 content = _currentAssistantMessage,
                 timestamp = DateTime.Now.ToString("O")
             };
+            if (_pendingTurnUsage != null)
+            {
+                msg.hasUsage = true;
+                msg.inputTokens = _pendingTurnUsage.input_tokens;
+                msg.cacheCreationTokens = _pendingTurnUsage.cache_creation_input_tokens;
+                msg.cacheReadTokens = _pendingTurnUsage.cache_read_input_tokens;
+                msg.outputTokens = _pendingTurnUsage.output_tokens;
+                msg.costUsd = _pendingTurnCost;
+            }
             Messages.Add(msg);
             OnMessageComplete?.Invoke(msg);
             _currentAssistantMessage = "";
+            _pendingTurnUsage = null;
+            _pendingTurnCost = 0;
         }
 
         public void StopGeneration()

@@ -1,5 +1,7 @@
 using System;
 using System.Diagnostics;
+using System.Net;
+using System.Threading;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -19,6 +21,11 @@ namespace ClaudeCode.Editor.UI
         VisualElement _spinner;
 
         bool _completed;
+
+        // ERR_UNSAFE_PORT 우회: 붙여넣은 콜백 URL을 백그라운드 스레드에서 전달한 결과.
+        volatile bool _deliverDone;
+        volatile bool _deliverOk;
+        string _deliverMsg;
 
         public LoginDialog(EditorWindow owner, AuthManager authManager, Action onComplete)
         {
@@ -74,6 +81,7 @@ namespace ClaudeCode.Editor.UI
                 "  3. Copy the authorization code from the browser.\n" +
                 "  4. Paste it into the terminal (right-click or Ctrl+V).\n" +
                 "  5. Press Enter.\n\n" +
+                "브라우저가 'ERR_UNSAFE_PORT' 또는 연결 불가를 표시하면, 아래 '브라우저 연결 실패 시' 안내를 따르세요.\n" +
                 "This window will detect login completion automatically.");
             instructions.style.fontSize = 11;
             instructions.style.color = new Color(0.8f, 0.8f, 0.8f);
@@ -82,6 +90,7 @@ namespace ClaudeCode.Editor.UI
             box.Add(instructions);
 
             BuildStatusRow(box);
+            BuildUnsafePortBypass(box);
             BuildApiKeyAlternative(box);
             BuildFooter(box);
 
@@ -125,6 +134,103 @@ namespace ClaudeCode.Editor.UI
             row.Add(_statusLabel);
 
             box.Add(row);
+        }
+
+        void BuildUnsafePortBypass(VisualElement box)
+        {
+            var header = new Label("브라우저 연결 실패(ERR_UNSAFE_PORT) 시:");
+            header.style.fontSize = 11;
+            header.style.unityFontStyleAndWeight = FontStyle.Bold;
+            header.style.color = new Color(0.9f, 0.8f, 0.5f);
+            header.style.marginBottom = 4;
+            box.Add(header);
+
+            var desc = new Label(
+                "승인 후 브라우저 주소창의 URL(http://localhost:.../callback?code=...)을 " +
+                "복사해서 아래에 붙여넣고 '로그인 완료'를 누르세요.");
+            desc.style.fontSize = 10;
+            desc.style.color = new Color(0.75f, 0.75f, 0.78f);
+            desc.style.whiteSpace = WhiteSpace.Normal;
+            desc.style.marginBottom = 6;
+            box.Add(desc);
+
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.marginBottom = 14;
+
+            var field = new TextField();
+            field.style.flexGrow = 1;
+            field.style.marginRight = 6;
+            var inputEl = field.Q<VisualElement>("unity-text-input");
+            if (inputEl != null) inputEl.style.minWidth = 0;
+            row.Add(field);
+
+            var btn = new Button(() => DeliverPastedCallback(field.value)) { text = "로그인 완료" };
+            btn.style.width = 90;
+            btn.style.flexShrink = 0;
+            row.Add(btn);
+
+            box.Add(row);
+        }
+
+        void DeliverPastedCallback(string url)
+        {
+            url = (url ?? "").Trim();
+            if (string.IsNullOrEmpty(url))
+            {
+                _statusLabel.text = "주소창 URL을 붙여넣어 주세요.";
+                return;
+            }
+            if (!url.StartsWith("http://localhost") && !url.StartsWith("http://127.0.0.1"))
+            {
+                _statusLabel.text = "localhost 콜백 URL만 가능합니다 (예: http://localhost:6667/callback?code=...).";
+                return;
+            }
+
+            _deliverDone = false;
+            _deliverOk = false;
+            _statusLabel.text = "콜백을 CLI로 전달하는 중...";
+
+            var target = url;
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    var req = (HttpWebRequest)WebRequest.Create(target);
+                    req.Method = "GET";
+                    req.Timeout = 10000;
+                    using var resp = (HttpWebResponse)req.GetResponse();
+                    int code = (int)resp.StatusCode;
+                    _deliverOk = code >= 200 && code < 400;
+                    _deliverMsg = $"HTTP {code}";
+                }
+                catch (Exception e)
+                {
+                    _deliverOk = false;
+                    _deliverMsg = e.Message;
+                }
+                finally
+                {
+                    _deliverDone = true;
+                }
+            }) { IsBackground = true };
+            thread.Start();
+
+            // 백그라운드 결과를 메인 스레드에서 안전하게 반영. 성공 시 로그인 완료는
+            // 기존 PollAuthStatus가 감지한다.
+            IVisualElementScheduledItem item = null;
+            item = _ownerWindow.rootVisualElement.schedule.Execute(() =>
+            {
+                if (!_deliverDone) return;
+                if (_deliverOk)
+                    _statusLabel.text = "콜백 전달 완료. 로그인 확인 중...";
+                else
+                {
+                    _statusLabel.text = $"콜백 전달 실패: {_deliverMsg}";
+                    SetSpinnerError();
+                }
+                item.Pause();
+            }).Every(300);
         }
 
         void BuildApiKeyAlternative(VisualElement box)

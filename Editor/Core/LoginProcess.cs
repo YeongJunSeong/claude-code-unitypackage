@@ -26,8 +26,6 @@ namespace ClaudeCode.Editor.Core
         {
             var psi = new ProcessStartInfo
             {
-                FileName = cliPath,
-                Arguments = "auth login",
                 UseShellExecute = false,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -36,6 +34,7 @@ namespace ClaudeCode.Editor.Core
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8
             };
+            CliLocator.ConfigureStartInfo(psi, cliPath, "auth login");
 
             try
             {

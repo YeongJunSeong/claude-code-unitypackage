@@ -12,6 +12,10 @@
 - UPM tarball(.tgz) export 메뉴 (`Tools > Claude Code Package > Export as UPM tarball`)
 - 패키지 README 문서
 
+### Changed
+- 마크다운 렌더링 시 연속된 텍스트(단락·제목·리스트)를 하나의 선택 가능한 요소로
+  합쳐, 블록 경계에서 드래그 선택이 끊기던 문제 개선. 코드 블록은 별도 박스로 유지.
+
 ### Fixed
 - CliLogin(OAuth) 모드에서 PC에 설정된 `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`
   환경변수가 OAuth 인증을 덮어써 401을 유발하는 문제 방지 (CLI 자식 프로세스 환경에서 제거)

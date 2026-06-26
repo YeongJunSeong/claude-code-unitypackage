@@ -62,8 +62,6 @@ namespace ClaudeCode.Editor.Core
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = _cliPath,
-                Arguments = args.ToString(),
                 UseShellExecute = false,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -73,6 +71,7 @@ namespace ClaudeCode.Editor.Core
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8
             };
+            CliLocator.ConfigureStartInfo(startInfo, _cliPath, args.ToString());
 
             _authManager?.ApplyAuth(startInfo);
 
