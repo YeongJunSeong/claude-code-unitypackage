@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.1] - 2026-06-26
+
+### Added
+- 메시지별 토큰/비용 표시: 각 어시스턴트 응답 하단에 `in/out` 토큰과 비용을 표시
+  (마우스 오버 시 input/cache write/cache read/output 상세). 히스토리에도 보존.
+
+### Fixed
+- Windows에서 npm으로 설치한 CLI(`...\npm\claude` 확장자 없는 셔임)를 실행하지 못하던 문제
+  ("%1은(는) 올바른 Win32 응용 프로그램이 아닙니다"). `.cmd`/`.exe`를 우선 선택하고
+  `.cmd`는 `cmd.exe`로 실행하도록 수정. → 다른 작업자 PC에서 로그인 감지/메시지 전송이 안 되던 문제 해결.
+
+### Docs
+- OAuth 로그인 시 `ERR_UNSAFE_PORT`(localhost 콜백 포트 차단) 문제해결 가이드 추가.
+
 ## [0.2.0] - 2026-06-25
 
 ### Added
