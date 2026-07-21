@@ -154,6 +154,9 @@ namespace ClaudeCode.Editor.Core
             if (!string.IsNullOrEmpty(model) && model != "default")
                 list.Add($"--model {model}");
 
+            if (!EffortManager.IsDefault)
+                list.Add($"--effort {EffortManager.Current}");
+
             if (!string.IsNullOrEmpty(McpConfigPath))
                 list.Add($"--mcp-config \"{McpConfigPath}\"");
 

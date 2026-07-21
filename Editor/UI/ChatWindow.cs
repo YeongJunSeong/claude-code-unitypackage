@@ -28,6 +28,7 @@ namespace ClaudeCode.Editor.UI
         Button _claudeMdButton;
         VisualElement _profileBadge;
         Label _profileBadgeLabel;
+        Button _effortButton;
         VisualElement _statusBar;
         VisualElement _statusDot;
         Label _statusLabel;
@@ -189,6 +190,22 @@ namespace ClaudeCode.Editor.UI
             }).Every(33);
 
             rootVisualElement.schedule.Execute(RefreshProfileBadge).Every(250);
+        }
+
+        void ShowEffortPopup()
+        {
+            var overlay = EffortPopup.Build(rootVisualElement, _effortButton, RefreshEffortButton);
+            rootVisualElement.Add(overlay);
+            Repaint();
+        }
+
+        void RefreshEffortButton()
+        {
+            if (_effortButton == null) return;
+            _effortButton.text = EffortManager.CurrentDisplayName;
+            _effortButton.tooltip = EffortManager.IsDefault
+                ? "작업량: CLI 기본값 사용 중. 클릭해서 조절"
+                : $"작업량: {EffortManager.CurrentDisplayName} (--effort {EffortManager.Current}). 클릭해서 조절";
         }
 
         void RefreshProfileBadge()
@@ -844,6 +861,22 @@ namespace ClaudeCode.Editor.UI
             _inputField.RegisterCallback<ExecuteCommandEvent>(OnExecuteCommand, TrickleDown.TrickleDown);
             _inputField.RegisterValueChangedCallback(OnInputValueChanged);
             inputRow.Add(_inputField);
+
+            _effortButton = new Button(ShowEffortPopup) { text = "" };
+            _effortButton.style.height = 36;
+            _effortButton.style.flexShrink = 0;
+            _effortButton.style.marginRight = 6;
+            _effortButton.style.paddingLeft = 8;
+            _effortButton.style.paddingRight = 8;
+            _effortButton.style.fontSize = 11;
+            _effortButton.style.backgroundColor = new Color(0.25f, 0.25f, 0.28f);
+            _effortButton.style.color = new Color(0.85f, 0.85f, 0.85f);
+            _effortButton.style.borderTopLeftRadius = 6;
+            _effortButton.style.borderTopRightRadius = 6;
+            _effortButton.style.borderBottomLeftRadius = 6;
+            _effortButton.style.borderBottomRightRadius = 6;
+            RefreshEffortButton();
+            inputRow.Add(_effortButton);
 
             _usageIndicator = new UsageIndicator();
             _usageIndicator.style.marginRight = 6;
