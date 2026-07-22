@@ -29,6 +29,7 @@ namespace ClaudeCode.Editor.UI
         VisualElement _profileBadge;
         Label _profileBadgeLabel;
         Button _effortButton;
+        Button _updateBadge;
         VisualElement _statusBar;
         VisualElement _statusDot;
         Label _statusLabel;
@@ -190,6 +191,25 @@ namespace ClaudeCode.Editor.UI
             }).Every(33);
 
             rootVisualElement.schedule.Execute(RefreshProfileBadge).Every(250);
+            rootVisualElement.schedule.Execute(RefreshUpdateBadge).Every(3000);
+            RefreshUpdateBadge();
+        }
+
+        void RefreshUpdateBadge()
+        {
+            if (_updateBadge == null) return;
+            if (UpdateChecker.HasUpdate)
+            {
+                _updateBadge.style.display = DisplayStyle.Flex;
+                _updateBadge.text = $"NEW v{UpdateChecker.RemoteVersion}";
+                _updateBadge.tooltip =
+                    $"새 버전 v{UpdateChecker.RemoteVersion} 사용 가능 (현재 v{UpdateChecker.InstalledVersion}).\n" +
+                    "클릭하면 Package Manager가 열립니다 — Update 버튼을 누르거나, 같은 git URL로 다시 Add 하세요.";
+            }
+            else
+            {
+                _updateBadge.style.display = DisplayStyle.None;
+            }
         }
 
         void ShowEffortPopup()
@@ -680,6 +700,22 @@ namespace ClaudeCode.Editor.UI
             _profileBadge.tooltip = "Profile capture가 진행 중입니다. /profile stop 로 종료하세요.";
             _profileBadge.RegisterCallback<MouseDownEvent>(_ => ExecuteProfileCommand("stop"));
             statusGroup.Add(_profileBadge);
+
+            _updateBadge = new Button(() => UpdateChecker.OpenPackageManager());
+            _updateBadge.style.height = 20;
+            _updateBadge.style.marginLeft = 10;
+            _updateBadge.style.paddingLeft = 8;
+            _updateBadge.style.paddingRight = 8;
+            _updateBadge.style.fontSize = 10;
+            _updateBadge.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _updateBadge.style.backgroundColor = new Color(0.16f, 0.42f, 0.30f);
+            _updateBadge.style.color = new Color(0.85f, 1f, 0.9f);
+            _updateBadge.style.borderTopLeftRadius = 10;
+            _updateBadge.style.borderTopRightRadius = 10;
+            _updateBadge.style.borderBottomLeftRadius = 10;
+            _updateBadge.style.borderBottomRightRadius = 10;
+            _updateBadge.style.display = DisplayStyle.None;
+            statusGroup.Add(_updateBadge);
 
             _statusBar.Add(statusGroup);
 
