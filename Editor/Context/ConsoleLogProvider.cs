@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using UnityEditor;
+using UnityEditor.Compilation;
 using UnityEngine;
 
 namespace ClaudeCode.Editor.Context
@@ -24,6 +25,7 @@ namespace ClaudeCode.Editor.Context
         public string FilePath;
         public int LineNumber;
         public int Id;
+        public bool IsCompileError;
 
         public string ShortLocation
         {
@@ -56,6 +58,15 @@ namespace ClaudeCode.Editor.Context
 
         public static event Action OnErrorsChanged;
 
+        /// <summary>
+        /// Fired once per failed compilation pass with the compiler errors of that pass.
+        /// Note: only fires when compilation FAILS — on success the domain reloads and
+        /// stale compile errors are naturally discarded with it.
+        /// </summary>
+        public static event Action<IReadOnlyList<ConsoleError>> OnCompileErrorsDetected;
+
+        static readonly List<ConsoleError> _pendingCompileErrors = new List<ConsoleError>();
+
         public static IReadOnlyList<ConsoleError> Errors => _errors;
         public static int ErrorCount => _errors.Count;
         public static ConsoleError LatestError => _errors.Count > 0 ? _errors[_errors.Count - 1] : null;
@@ -74,13 +85,55 @@ namespace ClaudeCode.Editor.Context
         {
             if (_listening) return;
             Application.logMessageReceived += OnLogMessage;
+            CompilationPipeline.assemblyCompilationFinished += OnAssemblyCompiled;
+            CompilationPipeline.compilationFinished += OnCompilationFinished;
             _listening = true;
         }
 
         public static void StopListening()
         {
             Application.logMessageReceived -= OnLogMessage;
+            CompilationPipeline.assemblyCompilationFinished -= OnAssemblyCompiled;
+            CompilationPipeline.compilationFinished -= OnCompilationFinished;
             _listening = false;
+        }
+
+        static void OnAssemblyCompiled(string assemblyPath, CompilerMessage[] messages)
+        {
+            if (messages == null) return;
+            foreach (var m in messages)
+            {
+                if (m.type != CompilerMessageType.Error) continue;
+                _pendingCompileErrors.Add(new ConsoleError
+                {
+                    Id = ++_nextErrorId,
+                    Message = m.message ?? "",
+                    StackTrace = "",
+                    Type = LogType.Error,
+                    IsCompileError = true,
+                    Timestamp = DateTime.Now,
+                    FilePath = m.file,
+                    LineNumber = m.line
+                });
+            }
+        }
+
+        static void OnCompilationFinished(object context)
+        {
+            if (_pendingCompileErrors.Count == 0) return;
+
+            // Replace the previous pass's compile errors with the current set so the
+            // badge reflects the CURRENT compile state instead of accumulating dupes
+            // across repeated failed compiles.
+            _errors.RemoveAll(e => e.IsCompileError);
+            _errors.AddRange(_pendingCompileErrors);
+            while (_errors.Count > MaxErrors) _errors.RemoveAt(0);
+
+            var snapshot = new List<ConsoleError>(_pendingCompileErrors);
+            _pendingCompileErrors.Clear();
+
+            try { OnErrorsChanged?.Invoke(); } catch { }
+            try { OnCompileErrorsDetected?.Invoke(snapshot); } catch { }
         }
 
         static void OnLogMessage(string message, string stackTrace, LogType type)

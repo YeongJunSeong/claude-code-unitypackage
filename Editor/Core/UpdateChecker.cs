@@ -10,9 +10,11 @@ namespace ClaudeCode.Editor.Core
 {
     /// <summary>
     /// Checks GitHub (public repo) for a newer package version by fetching the raw
-    /// package.json on main. Runs at most once per day (throttled via EditorPrefs),
-    /// on editor load. Results are exposed as polled state — the ChatWindow shows a
-    /// badge when an update is available.
+    /// package.json on main. Runs once per editor session: SessionState survives
+    /// domain reloads (so script recompiles don't re-fetch) but resets when the
+    /// editor restarts — i.e. every Unity launch gets exactly one check.
+    /// Results are exposed as polled state — the ChatWindow shows a badge when an
+    /// update is available.
     ///
     /// Skipped entirely when the package is embedded/local (we ARE the source then).
     /// </summary>
@@ -22,9 +24,8 @@ namespace ClaudeCode.Editor.Core
         const string RawPackageJsonUrl =
             "https://raw.githubusercontent.com/YeongJunSeong/claude-code-unitypackage/main/package.json";
 
-        const string LastCheckPrefKey = "ClaudeCode_UpdateCheck_LastTicks";
+        const string SessionCheckedKey = "ClaudeCode_UpdateCheck_DoneThisSession";
         const string CachedRemotePrefKey = "ClaudeCode_UpdateCheck_RemoteVersion";
-        const double CheckIntervalHours = 24;
 
         static readonly Regex VersionRegex =
             new Regex("\"version\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
@@ -68,13 +69,10 @@ namespace ClaudeCode.Editor.Core
             // Show cached result immediately (badge appears without waiting for network).
             RemoteVersion = EditorPrefs.GetString(CachedRemotePrefKey, null);
 
-            // Throttle: at most one network check per day.
-            var lastTicksStr = EditorPrefs.GetString(LastCheckPrefKey, "0");
-            long.TryParse(lastTicksStr, out var lastTicks);
-            var elapsed = DateTime.UtcNow - new DateTime(lastTicks, DateTimeKind.Utc);
-            if (elapsed.TotalHours < CheckIntervalHours) return;
+            // Once per editor session: survives domain reloads, resets on editor restart.
+            if (SessionState.GetBool(SessionCheckedKey, false)) return;
+            SessionState.SetBool(SessionCheckedKey, true);
 
-            EditorPrefs.SetString(LastCheckPrefKey, DateTime.UtcNow.Ticks.ToString());
             _ = FetchRemoteVersionAsync();
         }
 
@@ -119,6 +117,40 @@ namespace ClaudeCode.Editor.Core
         public static void OpenPackageManager()
         {
             UnityEditor.PackageManager.UI.Window.Open("com.dnsoft.claudecode");
+        }
+
+        /// <summary>Bypasses the daily throttle and checks GitHub immediately.</summary>
+        [MenuItem("Tools/Claude Code/Check for Updates", false, 30)]
+        public static void ForceCheck()
+        {
+            if (_mainCtx == null)
+                _mainCtx = System.Threading.SynchronizationContext.Current;
+
+            var info = UpmPackageInfo.FindForAssembly(typeof(UpdateChecker).Assembly);
+            if (info == null) return;
+            InstalledVersion = info.version;
+
+            if (info.source == PackageSource.Embedded || info.source == PackageSource.Local)
+            {
+                EditorUtility.DisplayDialog("Claude Code",
+                    "패키지를 개발 중인 프로젝트(embedded)에서는 업데이트 확인이 비활성화됩니다.", "OK");
+                return;
+            }
+
+            SessionState.SetBool(SessionCheckedKey, true);
+            _ = FetchRemoteVersionAsync().ContinueWith(_2 =>
+            {
+                _mainCtx?.Post(_3 =>
+                {
+                    if (HasUpdate)
+                        EditorUtility.DisplayDialog("Claude Code",
+                            $"새 버전 v{RemoteVersion} 사용 가능 (현재 v{InstalledVersion}).\n" +
+                            "채팅창 상단의 NEW 뱃지를 클릭하거나 Package Manager에서 업데이트하세요.", "OK");
+                    else
+                        EditorUtility.DisplayDialog("Claude Code",
+                            $"최신 버전입니다 (v{InstalledVersion}).", "OK");
+                }, null);
+            });
         }
     }
 }

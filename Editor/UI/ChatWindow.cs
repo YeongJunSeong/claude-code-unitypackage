@@ -30,6 +30,7 @@ namespace ClaudeCode.Editor.UI
         Label _profileBadgeLabel;
         Button _effortButton;
         Button _updateBadge;
+        VisualElement _compileToast;
         VisualElement _statusBar;
         VisualElement _statusDot;
         Label _statusLabel;
@@ -172,6 +173,7 @@ namespace ClaudeCode.Editor.UI
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
             CompilationPipeline.compilationStarted += OnCompilationStarted;
             Context.ConsoleLogProvider.OnErrorsChanged += OnConsoleErrorsChanged;
+            Context.ConsoleLogProvider.OnCompileErrorsDetected += OnCompileErrorsDetected;
             if (_mcpServer.IsRunning)
                 _session.McpConfigPath = McpConfigWriter.WriteConfig(_mcpServer.Port);
 
@@ -248,6 +250,7 @@ namespace ClaudeCode.Editor.UI
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             CompilationPipeline.compilationStarted -= OnCompilationStarted;
             Context.ConsoleLogProvider.OnErrorsChanged -= OnConsoleErrorsChanged;
+            Context.ConsoleLogProvider.OnCompileErrorsDetected -= OnCompileErrorsDetected;
 
             UnlockReloadIfNeeded();
 
@@ -572,6 +575,131 @@ namespace ClaudeCode.Editor.UI
             SetInputText(sb.ToString());
             _inputField.Focus();
 
+            rootVisualElement.schedule.Execute(OnSendClicked).StartingIn(50);
+        }
+
+        void OnCompileErrorsDetected(System.Collections.Generic.IReadOnlyList<Context.ConsoleError> errors)
+        {
+            RefreshErrorBadge();
+            ShowCompileErrorToast(errors);
+        }
+
+        void ShowCompileErrorToast(System.Collections.Generic.IReadOnlyList<Context.ConsoleError> errors)
+        {
+            if (errors == null || errors.Count == 0) return;
+
+            _compileToast?.RemoveFromHierarchy();
+
+            var toast = new VisualElement();
+            toast.style.position = Position.Absolute;
+            toast.style.bottom = 80;
+            toast.style.left = Length.Percent(50);
+            toast.style.translate = new Translate(Length.Percent(-50), 0);
+            toast.style.flexDirection = FlexDirection.Row;
+            toast.style.alignItems = Align.Center;
+            toast.style.backgroundColor = new Color(0.35f, 0.14f, 0.14f, 0.97f);
+            toast.style.paddingLeft = 14;
+            toast.style.paddingRight = 8;
+            toast.style.paddingTop = 8;
+            toast.style.paddingBottom = 8;
+            toast.style.borderTopLeftRadius = 8;
+            toast.style.borderTopRightRadius = 8;
+            toast.style.borderBottomLeftRadius = 8;
+            toast.style.borderBottomRightRadius = 8;
+            toast.style.borderTopWidth = 1;
+            toast.style.borderBottomWidth = 1;
+            toast.style.borderLeftWidth = 1;
+            toast.style.borderRightWidth = 1;
+            var border = new Color(0.6f, 0.3f, 0.3f);
+            toast.style.borderTopColor = border;
+            toast.style.borderBottomColor = border;
+            toast.style.borderLeftColor = border;
+            toast.style.borderRightColor = border;
+
+            var msg = new Label($"컴파일 에러 {errors.Count}개 발생");
+            msg.style.fontSize = 11;
+            msg.style.color = new Color(1f, 0.85f, 0.85f);
+            msg.style.marginRight = 10;
+            toast.Add(msg);
+
+            var errorList = new System.Collections.Generic.List<Context.ConsoleError>(errors);
+            var fixBtn = new Button(() =>
+            {
+                toast.RemoveFromHierarchy();
+                StartFixSessionForCompileErrors(errorList);
+            }) { text = "Fix with Claude" };
+            fixBtn.style.height = 22;
+            fixBtn.style.fontSize = 10;
+            fixBtn.style.paddingLeft = 10;
+            fixBtn.style.paddingRight = 10;
+            fixBtn.style.backgroundColor = new Color(0.25f, 0.45f, 0.75f);
+            fixBtn.style.color = Color.white;
+            fixBtn.style.borderTopLeftRadius = 4;
+            fixBtn.style.borderTopRightRadius = 4;
+            fixBtn.style.borderBottomLeftRadius = 4;
+            fixBtn.style.borderBottomRightRadius = 4;
+            toast.Add(fixBtn);
+
+            var closeBtn = new Button(() => toast.RemoveFromHierarchy()) { text = "x" };
+            closeBtn.style.width = 20;
+            closeBtn.style.height = 20;
+            closeBtn.style.fontSize = 9;
+            closeBtn.style.marginLeft = 4;
+            closeBtn.style.paddingLeft = 0;
+            closeBtn.style.paddingRight = 0;
+            toast.Add(closeBtn);
+
+            rootVisualElement.Add(toast);
+            _compileToast = toast;
+
+            rootVisualElement.schedule.Execute(() =>
+            {
+                if (toast.parent != null) toast.RemoveFromHierarchy();
+            }).StartingIn(15000);
+
+            Repaint();
+        }
+
+        public void StartFixSessionForCompileErrors(System.Collections.Generic.List<Context.ConsoleError> errors)
+        {
+            if (errors == null || errors.Count == 0) return;
+            if (_session == null || _session.IsProcessing)
+            {
+                ShowToast("진행 중인 응답이 있어요. 끝난 뒤 다시 시도해주세요.");
+                return;
+            }
+
+            _session.ClearHistory();
+            _messageContainer.Clear();
+            _attachmentBar.Clear();
+
+            // Attach the distinct files involved (up to 3 to keep context light).
+            var attached = new System.Collections.Generic.HashSet<string>();
+            foreach (var e in errors)
+            {
+                if (string.IsNullOrEmpty(e.FilePath)) continue;
+                if (attached.Count >= 3) break;
+                if (attached.Add(e.FilePath))
+                    _attachmentBar.Add(e.FilePath);
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("다음 Unity 컴파일 에러들을 분석하고 수정해줘. 각 에러의 원인을 설명하고, 해당 파일을 Edit 도구로 고쳐줘.");
+            sb.AppendLine();
+            sb.AppendLine("[Compile Errors]");
+            int listed = 0;
+            foreach (var e in errors)
+            {
+                sb.AppendLine($"- {e.Message}");
+                if (++listed >= 15)
+                {
+                    if (errors.Count > listed)
+                        sb.AppendLine($"... 외 {errors.Count - listed}개");
+                    break;
+                }
+            }
+
+            SetInputText(sb.ToString());
             rootVisualElement.schedule.Execute(OnSendClicked).StartingIn(50);
         }
 
