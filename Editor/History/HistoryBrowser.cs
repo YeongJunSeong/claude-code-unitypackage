@@ -1,12 +1,18 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
 using UnityEngine.UIElements;
+using ClaudeCode.Editor.Core;
 
 namespace ClaudeCode.Editor.History
 {
     public static class HistoryBrowser
     {
+        // Persists while the editor session lives so the filter survives sidebar rebuilds
+        // (toggle, session load/delete all rebuild the sidebar).
+        static string s_searchQuery = "";
+
         public static VisualElement Build(string currentSessionId, Action<SessionRecord> onSelect, Action<string> onDelete, Action onNewSession)
         {
             var sidebar = new VisualElement();
@@ -41,27 +47,95 @@ namespace ClaudeCode.Editor.History
 
             sidebar.Add(header);
 
+            // ---- 검색 필드 ----
+            var searchField = new TextField();
+            searchField.value = s_searchQuery;
+            searchField.style.marginLeft = 6;
+            searchField.style.marginRight = 6;
+            searchField.style.marginTop = 6;
+            searchField.style.marginBottom = 2;
+            var searchInput = searchField.Q<VisualElement>("unity-text-input");
+            if (searchInput != null)
+            {
+                searchInput.style.paddingLeft = 6;
+                searchInput.style.paddingRight = 6;
+                searchInput.style.paddingTop = 3;
+                searchInput.style.paddingBottom = 3;
+                searchInput.style.backgroundColor = new Color(0.16f, 0.16f, 0.18f);
+            }
+            sidebar.Add(searchField);
+
+            var searchHint = new Label("제목/대화 내용 검색");
+            searchHint.style.fontSize = 8;
+            searchHint.style.color = new Color(0.42f, 0.42f, 0.46f);
+            searchHint.style.marginLeft = 8;
+            searchHint.style.marginBottom = 4;
+            sidebar.Add(searchHint);
+
             var scroll = new ScrollView(ScrollViewMode.Vertical);
             scroll.style.flexGrow = 1;
             sidebar.Add(scroll);
 
             var sessions = HistoryStorage.ListSessions();
-            if (sessions.Count == 0)
+
+            void Rebuild(string query)
             {
-                var empty = new Label("No recent sessions");
-                empty.style.color = new Color(0.45f, 0.45f, 0.45f);
-                empty.style.fontSize = 11;
-                empty.style.paddingLeft = 12;
-                empty.style.paddingTop = 12;
-                scroll.Add(empty);
-            }
-            else
-            {
-                foreach (var s in sessions)
+                scroll.Clear();
+                var filtered = Filter(sessions, query);
+
+                if (filtered.Count == 0)
+                {
+                    var empty = new Label(string.IsNullOrEmpty(query) ? "No recent sessions" : "검색 결과 없음");
+                    empty.style.color = new Color(0.45f, 0.45f, 0.45f);
+                    empty.style.fontSize = 11;
+                    empty.style.paddingLeft = 12;
+                    empty.style.paddingTop = 12;
+                    scroll.Add(empty);
+                    return;
+                }
+
+                foreach (var s in filtered)
                     scroll.Add(BuildItem(s, s.sessionId == currentSessionId, onSelect, onDelete));
             }
 
+            searchField.RegisterValueChangedCallback(evt =>
+            {
+                s_searchQuery = evt.newValue ?? "";
+                Rebuild(s_searchQuery);
+            });
+
+            Rebuild(s_searchQuery);
             return sidebar;
+        }
+
+        static List<SessionRecord> Filter(List<SessionRecord> sessions, string query)
+        {
+            if (string.IsNullOrWhiteSpace(query)) return sessions;
+
+            var q = query.Trim();
+            var result = new List<SessionRecord>();
+            foreach (var s in sessions)
+            {
+                if (Matches(s, q)) result.Add(s);
+            }
+            return result;
+        }
+
+        static bool Matches(SessionRecord s, string q)
+        {
+            if (ContainsIgnoreCase(s.GetDisplayTitle(), q)) return true;
+            if (s.messages != null)
+            {
+                foreach (var m in s.messages)
+                    if (ContainsIgnoreCase(m.content, q)) return true;
+            }
+            return false;
+        }
+
+        static bool ContainsIgnoreCase(string haystack, string needle)
+        {
+            if (string.IsNullOrEmpty(haystack)) return false;
+            return haystack.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         static VisualElement BuildItem(SessionRecord record, bool isActive, Action<SessionRecord> onSelect, Action<string> onDelete)
@@ -112,7 +186,7 @@ namespace ClaudeCode.Editor.History
             label.style.whiteSpace = WhiteSpace.NoWrap;
             textBox.Add(label);
 
-            var dateLabel = new Label(FormatDate(record.lastMessageAt));
+            var dateLabel = new Label(BuildMetaText(record));
             dateLabel.style.color = new Color(0.5f, 0.5f, 0.5f);
             dateLabel.style.fontSize = 9;
             dateLabel.style.marginTop = 2;
@@ -141,6 +215,37 @@ namespace ClaudeCode.Editor.History
             });
 
             return item;
+        }
+
+        // "2h ago · out 5.2k · $0.42" — usage parts only appear when the session has data.
+        static string BuildMetaText(SessionRecord record)
+        {
+            var meta = FormatDate(record.lastMessageAt);
+
+            int outTokens = 0;
+            double cost = 0;
+            if (record.messages != null)
+            {
+                foreach (var m in record.messages)
+                {
+                    if (m == null || !m.hasUsage) continue;
+                    outTokens += m.outputTokens;
+                    cost += m.costUsd;
+                }
+            }
+
+            if (outTokens > 0)
+                meta += $" · out {FormatTokens(outTokens)}";
+            if (cost > 0)
+                meta += $" · ${cost:0.00}";
+            return meta;
+        }
+
+        static string FormatTokens(int n)
+        {
+            if (n >= 1_000_000) return (n / 1_000_000.0).ToString("0.#") + "M";
+            if (n >= 1_000) return (n / 1_000.0).ToString("0.#") + "k";
+            return n.ToString();
         }
 
         static string FormatDate(string isoDate)
